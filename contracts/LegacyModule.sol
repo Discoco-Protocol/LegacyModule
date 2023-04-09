@@ -12,16 +12,21 @@ error NotDead();
 error NotConfirmed();
 error NotSettled();
 error NotHeir();
-error NotERC20();
+error NotERC20Heir(address);
+error NotSetERC20(address);
 error Claimed();
+error TooManyERC20s();
+error TooManyHeirs();
 error InvalidHeir();
+error InvalidERC20();
 error InsufficientERC20();
 error InsufficientETH();
 error InvalidERC20List();
 error InvalidHeirList();
+error WrongNFTHeir(address, address, uint256, address);
 error InvalidNFTHeirParams();
-error DuplicateHeir();
-error DuplicateERC20();
+error DuplicateHeir(address);
+error DuplicateERC20(address);
 error DuplicateProposal();
 error NonexistERC20();
 error NonexistHeir();
@@ -53,8 +58,17 @@ contract LegacyModule {
 
     event HeirsSet(address indexed safe, address[] heirs);
     event HeirsAdded(address indexed safe, address[] heirs);
+    event HeirsRemoved(address indexed safe, address[] heirs);
+    event ERC20Added(address indexed safe, address[] erc20s);
+    event ERC20Removed(address indexed safe, address[] erc20s);
     event ERC20TokensSet(address indexed safe, address[] erc20Tokens);
     event NFTHeirSet(
+        address indexed safe,
+        address[] nftAddress,
+        uint256[] tokenId,
+        address[] heir
+    );
+    event NFTHeirRemoved(
         address indexed safe,
         address[] nftAddress,
         uint256[] tokenId,
@@ -82,12 +96,12 @@ contract LegacyModule {
 
     constructor(address _legacyGuard) {
         legacyGuard = IGuard(_legacyGuard);
-        dead_period = 360 * 1 days;
-        proposal_time_lock = 180 * 1 days;
+        dead_period = 180;
+        proposal_time_lock = 60;
     }
 
     function setERC20Heirs(address[] calldata heir) external {
-        if (heir.length == 0) {
+        if (heir.length > 10 || heir.length == 0) {
             revert InvalidHeirList();
         }
         EnumerableSet.AddressSet storage heirSet = heirs[msg.sender];
@@ -103,7 +117,7 @@ contract LegacyModule {
                 revert InvalidHeir();
             }
             if (!heirSet.add(heir[i])) {
-                revert DuplicateHeir();
+                revert DuplicateHeir(heir[i]);
             }
             unchecked {
                 ++i;
@@ -118,12 +132,15 @@ contract LegacyModule {
             revert InvalidHeirList();
         }
         EnumerableSet.AddressSet storage heirSet = heirs[msg.sender];
+        if (heirSet.length() + heir.length > 10) {
+            revert TooManyHeirs();
+        }
         for (uint256 i; i < heir.length; ) {
             if (heir[i] == address(0)) {
                 revert InvalidHeir();
             }
             if (!heirSet.add(heir[i])) {
-                revert DuplicateHeir();
+                revert DuplicateHeir(heir[i]);
             }
             unchecked {
                 ++i;
@@ -133,12 +150,40 @@ contract LegacyModule {
         emit HeirsAdded(msg.sender, heir);
     }
 
-    // todo isHeir
+    function removeERC20Heirs(address[] calldata heir) external {
+        if (heir.length == 0) {
+            revert InvalidHeirList();
+        }
+        EnumerableSet.AddressSet storage heirSet = heirs[msg.sender];
+        for (uint256 i; i < heir.length; ) {
+            if (!heirSet.contains(heir[i])) {
+                revert NotERC20Heir(heir[i]);
+            }
+            heirSet.remove(heir[i]);
+            unchecked {
+                ++i;
+            }
+        }
 
-    // todo remove erc20 heirs
+        emit HeirsRemoved(msg.sender, heir);
+    }
+
+    function isERC20Heir(
+        address safe,
+        address heir
+    ) external view returns (bool) {
+        return heirs[safe].contains(heir);
+    }
+
+    function isERC20Set(
+        address safe,
+        address erc20
+    ) external view returns (bool) {
+        return erc20Tokens[safe].contains(erc20);
+    }
 
     function setERC20Tokens(address[] calldata _erc20Tokens) external {
-        if (_erc20Tokens.length > 10 || _erc20Tokens.length == 0) {
+        if (_erc20Tokens.length > 30 || _erc20Tokens.length == 0) {
             revert InvalidERC20List();
         }
         EnumerableSet.AddressSet storage erc20TokensSet = erc20Tokens[
@@ -151,13 +196,12 @@ contract LegacyModule {
                 ++i;
             }
         }
-        // delete erc20Tokens[msg.sender];
         for (uint256 i; i < _erc20Tokens.length; ) {
             if (_erc20Tokens[i] == address(0)) {
-                revert NotERC20();
+                revert InvalidERC20();
             }
             if (!erc20TokensSet.add(_erc20Tokens[i])) {
-                revert DuplicateERC20();
+                revert DuplicateERC20(_erc20Tokens[i]);
             }
             unchecked {
                 ++i;
@@ -167,9 +211,51 @@ contract LegacyModule {
         emit ERC20TokensSet(msg.sender, _erc20Tokens);
     }
 
-    // todo add erc20 tokens / remove erc20 tokens
+    function addERC20Tokens(address[] calldata _erc20Tokens) external {
+        if (_erc20Tokens.length == 0) {
+            revert InvalidERC20List();
+        }
+        EnumerableSet.AddressSet storage erc20TokensSet = erc20Tokens[
+            msg.sender
+        ];
+        if (erc20TokensSet.length() + _erc20Tokens.length > 30) {
+            revert TooManyERC20s();
+        }
+        for (uint256 i; i < _erc20Tokens.length; ) {
+            if (_erc20Tokens[i] == address(0)) {
+                revert InvalidERC20();
+            }
+            if (!erc20TokensSet.add(_erc20Tokens[i])) {
+                revert DuplicateERC20(_erc20Tokens[i]);
+            }
+            unchecked {
+                ++i;
+            }
+        }
 
-    // todo duplicate
+        emit ERC20Added(msg.sender, _erc20Tokens);
+    }
+
+    function removeERC20Tokens(address[] calldata _erc20Tokens) external {
+        if (_erc20Tokens.length == 0) {
+            revert InvalidERC20List();
+        }
+        EnumerableSet.AddressSet storage erc20TokensSet = erc20Tokens[
+            msg.sender
+        ];
+        for (uint256 i; i < _erc20Tokens.length; ) {
+            if (!erc20TokensSet.contains(_erc20Tokens[i])) {
+                revert NotSetERC20(_erc20Tokens[i]);
+            }
+            erc20TokensSet.remove(_erc20Tokens[i]);
+            unchecked {
+                ++i;
+            }
+        }
+
+        emit ERC20Removed(msg.sender, _erc20Tokens);
+    }
+
     function setNFTHeir(
         address[] calldata nftAddress,
         uint256[] calldata tokenId,
@@ -193,6 +279,35 @@ contract LegacyModule {
         }
 
         emit NFTHeirSet(msg.sender, nftAddress, tokenId, heir);
+    }
+
+    function removeNFTHeir(
+        address[] calldata nftAddress,
+        uint256[] calldata tokenId,
+        address[] calldata heir
+    ) external {
+        if (
+            !(nftAddress.length > 0 &&
+                nftAddress.length == tokenId.length &&
+                nftAddress.length == heir.length)
+        ) {
+            revert InvalidNFTHeirParams();
+        }
+        for (uint i; i < nftAddress.length; ++i) {
+            if (
+                nftHeir[msg.sender][nftAddress[i]][tokenId[i]] != heir[i] ||
+                heir[i] == address(0)
+            ) {
+                revert WrongNFTHeir(
+                    msg.sender,
+                    nftAddress[i],
+                    tokenId[i],
+                    heir[i]
+                );
+            }
+            delete nftHeir[msg.sender][nftAddress[i]][tokenId[i]];
+        }
+        emit NFTHeirRemoved(msg.sender, nftAddress, tokenId, heir);
     }
 
     function propose(address safe) external {
@@ -230,10 +345,6 @@ contract LegacyModule {
         if (!heirSet.contains(heir)) {
             revert NonexistHeir();
         }
-        // uint256 balance = address(safe).balance;
-        // if (balance == 0 || balance < heirSet.length()) {
-        //     revert InsufficientETH();
-        // }
         if (finalBalancePer[safe][ETH_ADDRESS] == 0) {
             uint256 balance = safe.balance;
             finalBalancePer[safe][ETH_ADDRESS] = balance / heirSet.length();

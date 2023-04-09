@@ -10,3 +10,5 @@ cache
 artifacts
 
 yarn-error.log
+
+compiled-contracts
