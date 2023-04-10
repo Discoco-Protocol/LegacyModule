@@ -311,7 +311,7 @@ contract LegacyModule {
     }
 
     function propose(address safe) external {
-        uint256 lastUsed = legacyGuard.lastUsed();
+        uint256 lastUsed = legacyGuard.lastUsed(safe);
         // require current timestamp is greater than lastUsed plus dead period
         if (lastUsed + dead_period >= block.timestamp) {
             revert NotDead();
@@ -325,7 +325,7 @@ contract LegacyModule {
     }
 
     function settle(address safe) external {
-        uint256 lastUsed = legacyGuard.lastUsed();
+        uint256 lastUsed = legacyGuard.lastUsed(safe);
         if (lastUsed + dead_period >= proposals[safe]) {
             revert NotDead();
         }

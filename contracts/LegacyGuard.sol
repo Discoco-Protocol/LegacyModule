@@ -33,7 +33,8 @@ abstract contract BaseGuard is Guard {
 }
 
 contract LegacyGuard is BaseGuard {
-    uint256 public lastUsed;
+    // safe => last used timestamp
+    mapping(address => uint256) public lastUsed;
 
     function checkTransaction(
         address to,
@@ -50,6 +51,6 @@ contract LegacyGuard is BaseGuard {
     ) external {}
 
     function checkAfterExecution(bytes32 txHash, bool success) external {
-        lastUsed = block.timestamp;
+        lastUsed[msg.sender] = block.timestamp;
     }
 }

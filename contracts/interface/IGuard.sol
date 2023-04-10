@@ -2,5 +2,5 @@
 pragma solidity 0.8.19;
 
 interface IGuard {
-    function lastUsed() external view returns (uint256);
+    function lastUsed(address) external view returns (uint256);
 }
